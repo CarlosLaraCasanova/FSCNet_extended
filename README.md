@@ -25,6 +25,7 @@ See ```dltrain/arguments.py``` for descriptions on the expected input.
 ```bash
 python train_forensic.py -d /path/to/images --gt /path/to/ground_truth.csv --tosave /path/to/save/models --eval_out /path/to/save/evaluation/results --cv /path/to/5-fold_indices.json --ver /path/to/3ddfa_output.npy -m /path/to/optimization_matrices.npy --model resnet18 --dataset all_augm
 ```
+It assumes to be in the same path as the code for [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2).
 
 ## Citation
 
