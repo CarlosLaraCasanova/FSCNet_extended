@@ -1,44 +1,24 @@
-# Cephalometric Landmarks Localization
+# Estimación de localización y visibilidad de landmarks cefalométricos.
 
-This repository contains the original code for the paper:
+Repositorio con el código correspondiente a la parte informática del TFG "Análisis tensorial de redes
+neuronales convolucionales y su aplicación a la estimación de la localización de landmarks cefalométricos 
+y su visibilidad".
 
-**Cascade of convolutional models for few-shot automatic cephalometric landmarks localization**
+Por Carlos Lara Casanova
 
-Guillermo Gomez-Trenado, Pablo Mesejo, Oscar Cordon  
-*Engineering Applications of Artificial Intelligence*, Volume 123, 2023, 106391
+En `scripts` se encuentran los scripts utilizados para las ejecuciones realizadas para este TFG en los
+servidores ngpu de la UGR. 
 
-## Overview
+## Uso
 
-This project implements a method for the automatic localization of cephalometric landmarks using a cascade of convolutional models. The approach is designed for few-shot learning scenarios, making it suitable for small datasets commonly encountered in forensic anthropology.
-
-## Features
-
-- Cascade of conditional convolutional networks
-- High-resolution cephalometric landmark prediction
-- Validated against expert annotators
-- Significantly outperforms existing facial landmark localization methods
-
-## Usage
-
-See ```dltrain/arguments.py``` for descriptions on the expected input.
+En `dltrain/arguments.py` se encuentran los distintos argumentos que se pueden pasar al programa.
 
 ```bash
-python train_forensic.py -d /path/to/images --gt /path/to/ground_truth.csv --tosave /path/to/save/models --eval_out /path/to/save/evaluation/results --cv /path/to/5-fold_indices.json --ver /path/to/3ddfa_output.npy -m /path/to/optimization_matrices.npy --model resnet18 --dataset all_augm
+python entrenamiento.py --tosave ./path/to/save/results --cv /path/to/train_test_index.json --gt ./path/to/ground_truth.csv --boxes /path/to/precomputed_boxes.npy --ver /path/to/precomputed_vertices.npy --opt_mat /path/to/optimization_matrices.json --model name_of_model_to_train  --dataset name_of_dataset --label name_of_experiment
 ```
-It assumes to be in the same path as the code for [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2).
 
-## Citation
+Para el entrenamiento del modelo híbrido se ejecuta `entrenamiento_hibrido` y para el modelo con normales `entrenamiento_normales`. Las imágenes con las que 
+se entrena/testea se asume que están en la carpeta `./FORENSE`. Para este último hay que pasar adicionalmente la lista de normales precomputados.
 
-If you use this code in your research, please cite the following paper:
+Se asume que este código comparte ámbito con el código en [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2).
 
-```bibtex
-@article{gomez2023cascade,
-  title={Cascade of convolutional models for few-shot automatic cephalometric landmarks localization},
-  author={Gomez-Trenado, Guillermo and Mesejo, Pablo and Cordon, Oscar},
-  journal={Engineering Applications of Artificial Intelligence},
-  volume={123},
-  pages={106391},
-  year={2023},
-  publisher={Elsevier}
-}
-```
