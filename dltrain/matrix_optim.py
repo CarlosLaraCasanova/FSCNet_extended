@@ -1,9 +1,9 @@
 import numpy as np
 from copy import deepcopy
 from scipy import optimize
-from tqdm import tqdm, trange
+from tqdm.auto import tqdm, trange
 from dltrain.utils import mse_corrected, filter_nan, t2_test, LM_NAMES, save_M_json
-# from dltrain.arguments import parse_arguments, read_pts_lst, read_boxes, read_ver_and_dist, read_kfold
+from dltrain.arguments import parse_arguments, read_pts_lst, read_boxes, read_ver_and_dist, read_kfold
 
 
 class MatrixBuilder:
@@ -51,13 +51,11 @@ class CostFunction:
         e = mse_corrected(yp, self.np_dataset_pts_lst, correction=self.dataset_correction)
         return e
 
-# def optimize_matrix(args, v_list, v_ref):
-def optimize_matrix(v_list, v_ref, np_dataset_pts_lst, dataset_correction,np_dataset_ver_lst, np_dataset_dist_lst_norm,
-                    kfold_idxs, opt_maxiter, ):
-    # _ , np_dataset_pts_lst = read_pts_lst(args)
-    # np_dataset_boxes, dataset_correction = read_boxes(args)
-    # np_dataset_ver_lst, np_dataset_dist_lst_norm = read_ver_and_dist(args)
-    # kfold_idxs = read_kfold(args)
+def optimize_matrix(args, v_list, v_ref):
+    _ , np_dataset_pts_lst = read_pts_lst(args)
+    np_dataset_boxes, dataset_correction = read_boxes(args)
+    np_dataset_ver_lst, np_dataset_dist_lst_norm = read_ver_and_dist(args)
+    kfold_idxs = read_kfold(args)
 
     build_matrix = MatrixBuilder(np_dataset_ver_lst[:, :, v_list], v_ref)
 
@@ -90,7 +88,7 @@ def optimize_matrix(v_list, v_ref, np_dataset_pts_lst, dataset_correction,np_dat
                 # Transformation matrix
                 sol = optimize.differential_evolution(
                     foo, [(-5, +5)] * 12,
-                    workers=24, maxiter=opt_maxiter, updating='deferred')
+                    workers=24, maxiter=args.opt_maxiter, updating='deferred')
                 print(sol.message)
 
                 M_sol = build_matrix(sol.x)
@@ -112,15 +110,15 @@ def optimize_matrix(v_list, v_ref, np_dataset_pts_lst, dataset_correction,np_dat
         return d, yp_ts
 
     M_sol_dict = {}
-    yp = np.zeros_like(np_dataset_pts_lst)
+    yp = np.zeros((165, 30, 2))
     for cv_idx, (tr_idx, ts_idx) in enumerate(tqdm(kfold_idxs)):
         M_sol_dict[cv_idx], yp[ts_idx] = optimize_fold(tr_idx, ts_idx)
     M_sol_dict[-1], _ = optimize_fold(np.arange(np_dataset_pts_lst.shape[0]), [])
 
     # Save & return
-    # save_M_json(M_sol_dict, args.opt_mat)
-    return M_sol_dict, yp
+    save_M_json(M_sol_dict, args.opt_mat)
+    return yp
 
-# if __name__ == '__main__':
-#     args = parse_arguments()
-#     optimize_matrix(args)
+if __name__ == '__main__':
+    args = parse_arguments()
+    optimize_matrix(args)

@@ -3,33 +3,45 @@ import pandas as pd
 import numpy as np
 import argparse
 
-
+from scipy.spatial.distance import cdist
 
 from dltrain.data import *
 from dltrain.models import *
-from dltrain.utils import LM_NAMES, read_boxes
+from dltrain.utils import LM_NAMES
 
 MODEL_CHOICES = dict(resnet18=get_custom_resnet18, vgg11bn=get_custom_vgg11_bn,
                      condresnet18=get_conditional_resnet18_embedding,
                      condresnet18conv=get_conditional_resnet18_convolution,
                      condresnet18pwise=get_conditional_resnet18_pointwise,
-                     resnet18fed=get_custom_resnet18, mhresnet18=get_multihead_resnet18)
+                     resnet18fed=get_custom_resnet18, mhresnet18=get_multihead_resnet18,
+                     modelo1=get_modelo_cabeza_custom_resnet18_entrenada,
+                     modelo2=get_modelo_completoresnet18, 
+                     modelo_hibrido1=get_conditional_resnet18_convolution_hibrido,
+                     modelo3=get_modelo_completoresnet18_con_normal)
 
 DATASET_CHOICES = dict(torch=SingleLandmarkDataset, cv2=SingleLandmarkDatasetCV2,
                        augm=SingleLandmarkDatasetCV2Augmented, jitter=SingleLandmarkDatasetCV2Augmented,
                        all_noaug=AllLandmarkDatasetCV2Augmented,
-                       all_augm=AllLandmarkDatasetCV2Augmented, all_jitter=AllLandmarkDatasetCV2Augmented)
+                       all_augm=AllLandmarkDatasetCV2Augmented, all_jitter=AllLandmarkDatasetCV2Augmented,
+                       midataset_roi=AllLandmarkDatasetCV2Augmented_clasificacion,
+                       midataset_facebox=AllLandmarkDatasetCV2Augmented_clasificacion_caracompleta,
+                       midataset_roi_hibrido=AllLandmarkDatasetCV2Augmented_hibrido,
+                       midataset_facebox_normal=AllLandmarkDatasetCV2Augmented_clasificacion_caracompleta_con_normal)
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
+
+    parser.add_argument('--alfa', type=float, default=10, help='multiplicador error regresión entrenamiento híbrido')    
+    parser.add_argument('--beta', type=float, default=1, help='multiplicador error clasificación entrenamiento híbrido')
+    
     parser.add_argument('-d', '--data', type=str, help='images path')
     parser.add_argument('--gt', type=str, help='ground truth csv (size: [N, 1(filename) + 30*2(x,y)])')
 
     parser.add_argument('--tosave', type=str, help='Path to save models')
     parser.add_argument('--eval_out', type=str, help='Path to save evaluation results')
     parser.add_argument('--save_eval_images', action='store_true', help='Save evaluation images')
-    parser.add_argument('--cv', type=str, help='5-fold train/test indices json path (size: [5, 2, N])')
+    parser.add_argument('--cv', type=str, help='5-fold train/test indices json path (size: [5, 2, _])')
 
     # All-purpose boxes
     parser.add_argument('--boxes', type=str, help='3DDFA boxes numpy path (size: [N, 4])')
@@ -120,21 +132,62 @@ def read_pts_lst(args):
     # Load data
     df1 = pd.read_csv(args.gt)
     filenames = df1.iloc[:, 0]
+    
     np_dataset_pts_lst = df1.iloc[:, 1:].to_numpy().reshape((-1, 30, 2))
     return filenames, np_dataset_pts_lst
 
+def get_correction(boxes):
+    dataset_correction = (boxes[:, [2, 3]] - boxes[:, [0, 1]]).max(1)
+    return dataset_correction
 
+def read_boxes(args):
+    # DATOS DE LAS FACE BOXES DE CADA IMAGEN DE ENTRENAMIENTO
+    np_dataset_boxes = np.load(args.boxes)
+    # dataset_correction = (np_dataset_boxes[:, [2, 3]] - np_dataset_boxes[:, [0, 1]]).max(1)
+    # CALCULO DE LA CORRECCIÓN
+    dataset_correction = get_correction(np_dataset_boxes)
+    return np_dataset_boxes, dataset_correction
 
-def read_ver_lst(args):
+def read_ver_and_dist(args):
     assert args.ver is not None
 
-    # np_dataset_pts_lst = read_pts_lst(args)[1]
-    # dataset_correction = read_boxes(args)[1]
+    # Lista de las (X,Y) de los landamarks para todos las imagenes de entrenamiento
+    np_dataset_pts_lst = read_pts_lst(args)[1]
+    # Lista de las correciones para cada imagen de las de entrenamiento
+    dataset_correction = read_boxes(args)[1]
+    
+    # Lista de los (X,Y,Z) de los vértices de cada máscara para cada imagen de entrada
     np_dataset_ver_lst = np.load(args.ver)
-
-    return np_dataset_ver_lst
+    # Compute every 3DFFA vertex to Ground-truth distance
+    dataset_dist_lst = []
+    # pts_lst: LISTA DE (X,Y) DE LANDMARKS DE UNA IMAGEN DE TRAIN
+    # ver_lst: LISTA DE (X,Y,Z) DE VÉRTICES DELA MÁSCARA DE UNA IMAGEN DE TRAIN
+    for ver_lst, pts_lst in zip(np_dataset_ver_lst, np_dataset_pts_lst):
+        # dist_matrix: DISTANCIA ENRE CADA LANDMARK Y VÉRTICE DE LA MÁSCARA (PROYECTADA)
+        dist_matrix = cdist(ver_lst[:2].T, pts_lst)
+        dataset_dist_lst.append(dist_matrix)
+    # dataset_dist_lst: PARA CADA IMAGEN DE ENTRADA, LA DISTANCIA ENTRE SUS LANDMARKS
+    #                  Y LOS VÉRTICES DE SU MÁSCARA
+    # np_dataset_dist_lst_norm: SE NORMALIZA DICHA DISTANCIA
+    np_dataset_dist_lst_norm = np.array(dataset_dist_lst) / dataset_correction[:, None, None]
+    return np_dataset_ver_lst, np_dataset_dist_lst_norm
 
 def read_kfold(args):
     with open(args.cv) as f:
         kfold_idxs = json.load(f)
     return kfold_idxs
+    
+# EMPIEZA CÓDIGO DE CARLOS LARA CASANOVA    
+    
+def read_visiblity_lst(args):
+    # Load data
+    df = pd.read_csv(args.gt)
+    filenames = df.iloc[:, 0]
+    
+    np_dataset_puntos_list = df.iloc[:, 1:].to_numpy().reshape((-1, 30, 2))
+    
+    np_dataset_visibility_list = ~np.isnan(np_dataset_puntos_list)[:,:,0]
+   
+    return filenames, np_dataset_visibility_list
+    
+# TERMINA CÓDIGO DE CARLOS LARA CASANOVA

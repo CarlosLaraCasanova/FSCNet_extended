@@ -73,12 +73,12 @@ class ConditionalResnetEmbedding(CustomResnet):
             x = torch.cat((x, self.cmap(c)), 1)
             x = self.fc(x)
         return x
-
+# SE HA AÑADIDO EL ARGUMENTO DE salida_cmap
 class ConditionalResnetPointwise(CustomResnet):
-    def __init__(self, *args, num_classes=None, **kwargs):
+    def __init__(self, *args, num_classes=None, salida_cmap=256 , **kwargs):
         super().__init__(*args, **kwargs)
         self.cmap = torch.nn.Sequential(
-            torch.nn.Linear(num_classes, 256),
+            torch.nn.Linear(num_classes, salida_cmap),
             torch.nn.LeakyReLU())
 
     def forward(self, x, c):
@@ -90,6 +90,7 @@ class ConditionalResnetPointwise(CustomResnet):
         if 'fc' not in self.todrop_list:
             x = x * self.cmap(c)
             x = self.fc(x)
+            
         return x
 
 
@@ -235,6 +236,8 @@ def get_conditional_resnet18_pointwise(fc_out=2, input_side=32, pretrained=True,
     custom_model.fc = torch.nn.Linear(fc_size, fc_out)
 
     return custom_model
+    
+    
 
 # Concatenate on input
 
@@ -267,5 +270,97 @@ def get_custom_vgg11_bn(fc_out=2, input_side=32, pretrained=True, **kwargs):
     # print(fc_size)
     vgg_model.classifier = torch.nn.Linear(fc_size, fc_out)
     return vgg_model
+    
+    
+# EMPIEZA CÓDIGO DE CARLOS LARA CASANOVA
+
+def get_modelo_cabeza_custom_resnet18_entrenada(dropout=False):
+    # ES EL MISMO MODELO QUE EL ORIGINAL
+    model = get_conditional_resnet18_pointwise(pretrained=None, dropout=dropout)
+
+    # CARGO LOS PESOS DEL MODELO ENTRENADO PARA REGRESIÓN
+    pesos = torch.load("./saved_results_paper/para_carlos_modelo/3d_best_idx_corrected_01_RESNET18_JOINT_PWISE_nojitter_optim_cvALL.pth")
+    model.load_state_dict(pesos, strict=False)
+
+    # ALEATORIZO LOS PESOS DE LAS CABEZAS
+    torch.nn.init.kaiming_uniform_(model.fc.weight)
+    torch.nn.init.kaiming_uniform_(model.cmap[0].weight)
+    
+    # Congelo los pesos de las capas de la red convolucional
+    for p in model.parameters():
+        p.requires_grad = False
+       
+    # DESCONGELO LOS PESOS DEL CLASIFICADOR
+    model.fc.weight.requires_grad = True
+    model.cmap[0].weight.requires_grad = True
+    
+    return  model
+
+
+def get_modelo_completoresnet18(fc_out=2, input_side=224, pretrained=True, num_classes=30, dropout=False, **kwargs):
+    model = models.resnet18(pretrained=pretrained)
+    model_sd = model.state_dict()
+
+    custom_model = ConditionalResnetPointwise(models.resnet.BasicBlock, [2, 2, 2, 2], num_classes=num_classes, salida_cmap=512)
+    custom_model.load_state_dict(model_sd, strict=False)
+
+    if dropout:
+        custom_model.add_after('avgpool', torch.nn.Dropout2d(0.5), 'dropout')
+
+    custom_model.drop_keys(['fc'])
+    fake_inp = torch.zeros((1, 3, input_side, input_side))
+    fc_size = custom_model(fake_inp, torch.zeros((1, num_classes))).size(1)
+    #print(fc_size)
+    custom_model.drop_keys([])
+    custom_model.fc = torch.nn.Linear(fc_size, fc_out)
+
+    return custom_model
+    
+    
+def get_conditional_resnet18_convolution_hibrido(fc_out=4, input_side=32, pretrained=True, num_classes=30, cmap=None, **kwargs):
+    custom_model = get_conditional_resnet18_convolution(fc_out=fc_out, pretrained=pretrained, num_classes=num_classes, cmap=cmap)
+    return custom_model
+
+
+class ConditionalResnetPointwise_ConNormal(CustomResnet):
+    def __init__(self, *args, num_classes=None, salida_cmap=256, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cmap = torch.nn.Sequential(
+            torch.nn.Linear(num_classes+3, salida_cmap),
+            torch.nn.LeakyReLU())
+
+    def forward(self, x, c):
+        for k in self.ordered_keys[:-1]:
+            if k in self.todrop_list:
+                continue
+            f = getattr(self, k)
+            x = f(x)
+        if 'fc' not in self.todrop_list:
+            x = x * self.cmap(c)
+            x = self.fc(x)
+            
+        return x
+
+def get_modelo_completoresnet18_con_normal(fc_out=2, input_side=224, pretrained=True, num_classes=30, dropout=False, **kwargs):
+    model = models.resnet18(pretrained=pretrained)
+    model_sd = model.state_dict()
+
+    custom_model = ConditionalResnetPointwise_ConNormal(models.resnet.BasicBlock, [2, 2, 2, 2], num_classes=num_classes, salida_cmap=512)
+    custom_model.load_state_dict(model_sd, strict=False)
+
+    if dropout:
+        custom_model.add_after('avgpool', torch.nn.Dropout2d(0.5), 'dropout')
+
+    custom_model.drop_keys(['fc'])
+    fake_inp = torch.zeros((1, 3, input_side, input_side))
+    fc_size = custom_model(fake_inp, torch.zeros((1, num_classes+3))).size(1)
+
+    custom_model.drop_keys([])
+    custom_model.fc = torch.nn.Linear(fc_size, fc_out)
+
+    return custom_model
+
+# ACABA CÓDIGO DE CARLOS LARA CASANOVA
+    
 
 

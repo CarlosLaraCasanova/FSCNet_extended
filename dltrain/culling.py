@@ -22,3 +22,8 @@ class FaceCulling:
         visibility_mask = cos.squeeze() > 0
 
         return visibility_mask
+
+    def get_normales(self,vertices):
+        vertices = _to_ctype(vertices.T)
+        return get_normal(vertices,self.triangles)
+    

@@ -13,6 +13,15 @@ LM_NAMES = ["Menton", "Gnathion", "Pogonion", "Prosthion", "Labiale Superius", "
             "Right Tragion", "Infradentale", "Trichion", "Supramentale", "Left Frontotemporale",
             "Right Frontotemporale", "Left Frontozygomaticus", "Right Frontozygomaticus", "Left Midsurpaorbital",
             "Right Midsupraorbital", ]
+
+LM_NAMES_CORTO = ["Me", "Gn", "Pg", "Pr", "Ls", "Sn", "N", "G'",
+            "v", "GoL", "GoR", "zyL", "zyR", "alL", "alR",
+            "EnL", "enR", "ExL", "ExR", "T'L",
+            "T'R", "Id", "Tr", "sm", "FtL",
+            "FtR", "fzL", "fzR", "msolL",
+            "msoR", ]
+            
+
 LM_FLIP_IDX = np.arange(len(LM_NAMES))
 LM_FLIP_IDX[['Left' in x for x in LM_NAMES]] += 1
 LM_FLIP_IDX[['Right' in x for x in LM_NAMES]] -= 1
@@ -144,84 +153,21 @@ def plot_history(train_history,epochs,title=None):
     fig,ax = plt.subplots(1)
     for k in train_history.keys():
         y_plot = train_history[k]
-        x_plot = np.linspace(0,epochs,len(y_plot))
+        x_plot = np.linspace(0,len(train_history["train"]),len(y_plot))
         ax.plot(x_plot,y_plot)
-    ax.legend(train_history.keys())
+    ax.legend(["error train", "error val"])
     ax.set_yscale('log')
     if title is not None:
         ax.set_title(title)
     return fig
-
-from tqdm import tqdm
-from FaceBoxes import FaceBoxes
-def get_correction(boxes):
-    boxes = boxes.reshape(-1,5)
-    dataset_correction = (boxes[:, [2, 3]] - boxes[:, [0, 1]]).max(1)
-    return dataset_correction
-
-def read_boxes(boxes_path):
-    np_dataset_boxes = np.load(boxes_path)
-    # dataset_correction = (np_dataset_boxes[:, [2, 3]] - np_dataset_boxes[:, [0, 1]]).max(1)
-    # dataset_correction = get_correction(np_dataset_boxes)
-    return np_dataset_boxes#, dataset_correction
-def get_filelist_boxes(filenames,images_folder):
-    face_boxes = FaceBoxes()
-    # Get Bounding Boxes
-    dataset_boxes = []
-    empty_box = [np.nan]*5
-
-    for img_filename in tqdm(filenames, desc='Loading images'):
-        full_impath = os.path.join(images_folder, img_filename)
-        # [[x0,y0,x1,y1]]
-        cache_path = os.path.join(images_folder, img_filename + '.boxes.json')
-        if os.path.exists(cache_path):
-            with open(cache_path, 'r') as f:
-                boxes = json.load(f)
-        else:
-            img = read_image(full_impath)
-            boxes = face_boxes(img)
-            boxes = [[float(v) for v in b] for b in boxes]
-            with open(cache_path, 'w') as f:
-                json.dump(boxes, f)
-
-        if len(boxes) == 0:
-            print('No face detected in {}'.format(img_filename))
-            boxes = [empty_box]
-        elif len(boxes) > 1:
-            print('More than one face detected on image {}'.format(img_filename))
-            boxes = [empty_box]
-        dataset_boxes.append(boxes[0])
-    return dataset_boxes
-import yaml
-from TDDFA import TDDFA
-def get_filelist_vertices(dataset_boxes, filenames, images_folder, gpu_mode=True, gpu_id=0):
-    tddfa_config = yaml.load(open('configs/mb1_120x120.yml'), Loader=yaml.SafeLoader)
-    tddfa = TDDFA(gpu_mode=gpu_mode, **tddfa_config, gpu_id=gpu_id)
-
-    # Get 3d vertices
-    ver_lst_all = []
-    for img_filename, boxes in tqdm(zip(filenames, dataset_boxes), total=len(filenames),
-                                         desc='Loading vertices'):
-        cache_path = os.path.join(images_folder, img_filename + '.vertices.npy')
-        if os.path.exists(cache_path):
-            ver_lst = np.load(cache_path)
-        else:
-            img = read_image(os.path.join(images_folder, img_filename))
-            # Get 3d vertices
-            param_lst, roi_box_lst = tddfa(img, [boxes])
-            ver_lst = tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=True)
-            np.save(cache_path, ver_lst)
-        ver_lst_all.append(ver_lst)
-    ver_lst_all = np.array(ver_lst_all).squeeze()
-    return ver_lst_all
-
-from scipy.spatial.distance import cdist
-def get_ver_dist_list(np_dataset_pts_lst, np_dataset_ver_lst, dataset_correction):
-    # Compute every 3DFFA vertex to Ground-truth distance
-    dataset_dist_lst = []
-    for ver_lst, pts_lst in zip(np_dataset_ver_lst, np_dataset_pts_lst):
-        dist_matrix = cdist(ver_lst[:2].T, pts_lst)
-        dataset_dist_lst.append(dist_matrix)
-
-    np_dataset_dist_lst_norm = np.array(dataset_dist_lst) / dataset_correction[:, None, None]
-    return np_dataset_dist_lst_norm
+    
+def plot_accuracy(acc_history,epochs,title=None):
+    fig,ax = plt.subplots(1)
+    for k in acc_history.keys():
+        y_plot = acc_history[k]
+        x_plot = np.linspace(0,len(acc_history["train"]),len(y_plot))
+        ax.plot(x_plot,y_plot)
+    ax.legend(["accuracy train", "accuracy val"])
+    if title is not None:
+        ax.set_title(title)
+    return fig
